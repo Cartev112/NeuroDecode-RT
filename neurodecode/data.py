@@ -27,10 +27,14 @@ def load_eegbci(cfg: Config, subjects=(1,), runs=(4, 8, 12), use_cache=True):
     import mne
     from mne.datasets import eegbci
     from mne.io import concatenate_raws, read_raw_edf
+    # Pre-set the dataset path config and pass update_path=False so MNE never
+    # blocks on an interactive "Do you want to set the path?" prompt (which hangs
+    # non-interactive/background runs forever).
+    mne.set_config("MNE_DATASETS_EEGBCI_PATH", cfg.data_root, set_env=True)
     raws = []
     for s in subjects:
-        for f in eegbci.load_data(s, runs, path=cfg.data_root):
-            raws.append(read_raw_edf(f, preload=True))
+        for f in eegbci.load_data(s, runs, path=cfg.data_root, update_path=False):
+            raws.append(read_raw_edf(f, preload=True, verbose=False))
     raw = concatenate_raws(raws)
     eegbci.standardize(raw)
     raw.filter(0.5, 40.0, fir_design="firwin", verbose=False)
