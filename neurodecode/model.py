@@ -35,6 +35,21 @@ class CausalSelfAttention(nn.Module):
         y = (att @ v).transpose(1, 2).contiguous().view(B, T, C)
         return self.out(y)
 
+    def step(self, x_t, cache):                # x_t: [B,1,d]; cache: {'k','v'} or Nones
+        B, _, C = x_t.shape
+        q, k, v = self.qkv(x_t).chunk(3, dim=-1)
+        q, k, v = self._split(q), self._split(k), self._split(v)   # [B,H,1,hd]
+        if cache["k"] is None:
+            K, V = k, v
+        else:
+            K = torch.cat([cache["k"], k], dim=2)
+            V = torch.cat([cache["v"], v], dim=2)
+        cache["k"], cache["v"] = K, V
+        att = (q @ K.transpose(-2, -1)) / math.sqrt(self.head_dim)  # [B,H,1,T]
+        att = att.softmax(dim=-1)
+        y = (att @ V).transpose(1, 2).contiguous().view(B, 1, C)
+        return self.out(y), cache
+
 
 class Block(nn.Module):
     def __init__(self, cfg: Config):
@@ -51,6 +66,12 @@ class Block(nn.Module):
         x = x + self.attn(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
         return x
+
+    def step(self, x_t, cache):
+        a, cache = self.attn.step(self.ln1(x_t), cache)
+        x_t = x_t + a
+        x_t = x_t + self.mlp(self.ln2(x_t))
+        return x_t, cache
 
 
 class NeuroDecoder(nn.Module):
@@ -73,3 +94,13 @@ class NeuroDecoder(nn.Module):
             h = blk(h)
         h = self.norm_f(h)
         return self.forecast_head(h), self.class_head(h)
+
+    def init_cache(self, batch):
+        return [{"k": None, "v": None} for _ in range(len(self.blocks))]
+
+    def forward_step(self, token, cache, pos):   # token: [B, d_model] (no pos emb)
+        h = token.unsqueeze(1) + self.pos_emb.weight[pos][None, None, :]   # [B,1,d]
+        for i, blk in enumerate(self.blocks):
+            h, cache[i] = blk.step(h, cache[i])
+        h = self.norm_f(h)
+        return self.forecast_head(h).squeeze(1), self.class_head(h).squeeze(1)
