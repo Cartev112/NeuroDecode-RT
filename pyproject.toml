@@ -1,0 +1,18 @@
+[project]
+name = "neurodecode"
+version = "0.1.0"
+requires-python = ">=3.11"
+# NOTE: torch (CUDA cu128) and inferscope are installed out-of-band, not from
+# PyPI — see docs/ENV.md. They are listed here so the package metadata is
+# honest, but you must install them via the documented commands first.
+dependencies = ["numpy", "matplotlib", "mne", "torch", "inferscope"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["neurodecode"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
